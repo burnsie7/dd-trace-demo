@@ -1,0 +1,98 @@
+buildscript {
+  ext {
+    springBootVersion = '1.5.7.RELEASE'
+  }
+  repositories {
+    mavenCentral()
+  }
+  dependencies {
+    classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+  }
+}
+
+plugins {
+  id 'io.franzbecker.gradle-lombok' version '1.10'
+  id 'java'
+  id "com.zoltu.application-agent" version "1.0.14"
+}
+
+apply plugin: 'org.springframework.boot'
+apply plugin: "eclipse"
+
+eclipse {
+  classpath {
+    downloadSources = true
+    downloadJavadoc = true
+  }
+}
+
+
+group = 'com.datadog.example'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = 1.8
+
+repositories {
+  mavenCentral()
+  maven {
+    url "https://oss.jfrog.org/artifactory/oss-snapshot-local/"
+  }
+}
+
+
+ext {
+  springCloudVersion = 'Dalston.SR3'
+}
+
+dependencies {
+  compile('org.springframework.boot:spring-boot-starter-actuator')
+  compile('org.springframework.boot:spring-boot-starter-data-jpa')
+  compile('org.springframework.boot:spring-boot-starter-web')
+  compile('org.springframework.boot:spring-boot-starter-log4j2')
+
+  compile('org.springframework.cloud:spring-cloud-starter-feign')
+
+  compile group: 'io.github.openfeign', name: 'feign-jackson', version: '9.5.1'
+  compile group: 'io.github.openfeign', name: 'feign-okhttp', version: '9.5.1'
+  compile group: 'org.apache.httpcomponents', name: 'httpclient', version: '4.5.3'
+
+  compile group: "org.apache.logging.log4j", name: "log4j-api", version: "2.11.1"
+  compile group: "org.apache.logging.log4j", name: "log4j-core", version: "2.11.1"
+  compile group: "org.apache.logging.log4j", name: "log4j-slf4j-impl", version: "2.11.1"
+
+  compile group: 'org.mongodb', name: 'mongo-java-driver', version: '3.4.2'
+
+  compile('com.h2database:h2')
+
+  testCompile('org.springframework.boot:spring-boot-starter-test')
+
+  agent group: 'com.datadoghq', name: 'dd-java-agent', version: '+'
+  compile group: 'com.datadoghq', name: 'dd-trace-ot', version: '+'
+}
+
+dependencyManagement {
+  imports {
+    mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+  }
+}
+
+configurations {
+  all {
+    exclude group: 'org.springframework.boot', module: 'spring-boot-starter-logging'
+  }
+}
+
+bootRun {
+  def agentjar = configurations.agent.find { it.name.startsWith("dd-java-agent-") }
+
+
+  jvmArgs '-Ddd.jmxfetch.enabled=true'
+  // jvmArgs '-Dcom.sun.management.jmxremote'
+  // jvmArgs '-Dcom.sun.management.jmxremote.port=9013'
+  // jvmArgs '-Dcom.sun.management.jmxremote.local.only=false'
+  // jvmArgs '-Dcom.sun.management.jmxremote.ssl=false'
+  // jvmArgs '-Dcom.sun.management.jmxremote.authenticate=false'
+  jvmArgs "-javaagent:${agentjar}"
+
+  // jvmArgs '-Ddatadog.slf4j.simpleLogger.defaultLogLevel=debug'
+  // jvmArgs '-Ddd.writer.type=LoggingWriter'
+}

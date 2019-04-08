@@ -1,0 +1,326 @@
+variables:
+  APP_JAVA: "dd-trace-demo-java"
+  APP_GO: "dd-trace-demo-go"
+  APP_JS: "dd-trace-demo-js"
+  APP_PHP: "dd-trace-demo-php"
+  APP_REQUEST_GENERATION: "dd-trace-demo-request-generation"
+  APP_TESTRAND: "dd-trace-demo-testrand"
+  BUILD_STABLE_REGISTRY: "486234852809.dkr.ecr.us-east-1.amazonaws.com"
+  AWS_STAGING_REGISTRY: "727006795293.dkr.ecr.us-east-1.amazonaws.com"
+  AWS_PROD_REGISTRY: "464622532012.dkr.ecr.us-east-1.amazonaws.com"
+  GCP_STAGING_REGISTRY: "eu.gcr.io/datadog-staging"
+  GCP_PROD_REGISTRY: "eu.gcr.io/datadog-prod"
+  DOCKER_IMAGE: 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker:18.03.1
+  KUBERNETES_VALIDATE_IMAGE: 486234852809.dkr.ecr.us-east-1.amazonaws.com/kubernetes-manifest-validate:9
+  GIT_BASE_BRANCH: "master"
+  # It seems a good idea to add a var IMAGE_TAG: "v${CI_PIPELINE_ID}-${CI_COMMIT_SHA:0:8}"
+  # but unfortunately it's resolved as "v1234-" instead of the expected "v1234-abcdefg"
+  # So for now let's stick with using ${CI_COMMIT_SHA:0:8} directly in the script definitions.
+  VERSION_PREFIX: "v${CI_PIPELINE_ID}-"
+  CI_IMAGE: "486234852809.dkr.ecr.us-east-1.amazonaws.com/ci/dd-trace-demo@sha256:1055f39f539c169e0ce74e56f043c7b94486e54622b95f48a0915aab4567e353"
+
+include: 'https://gitlab-templates.ddbuild.io/spintool/upload-spinnaker-pipelines.yml'
+
+stages:
+  - ci-image
+  - build
+  - release-to-staging
+  - release-to-prod
+  - validate-helm
+  - upload-helm
+  - upload-spinnaker-pipelines
+
+build-ci-image:
+  stage: ci-image
+  when: manual
+  except: [ tags, schedules ]
+  tags: [ "runner:docker", "size:large" ]
+  image: $DOCKER_IMAGE
+  script:
+    - docker build --tag $CI_IMAGE -f Dockerfile.gitlab .
+    - docker push $CI_IMAGE
+
+.build-image-template: &build-image-definition
+  stage: build
+  image: $DOCKER_IMAGE
+  tags: [ "runner:docker", "size:large" ]
+  script:
+    - docker build
+      --tag $BUILD_STABLE_REGISTRY/$APP:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}$TAG_SUFFIX
+      $DOCKER_BUILD_ARG
+      --file $DOCKERFILE
+      .
+    - docker push $BUILD_STABLE_REGISTRY/$APP:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}$TAG_SUFFIX
+
+build-go:
+  <<: *build-image-definition
+  variables:
+    APP: "$APP_GO"
+    DOCKERFILE: Dockerfiles/go-coffeehouse.Dockerfile
+
+build-java:
+  <<: *build-image-definition
+  variables:
+    APP: "$APP_JAVA"
+    DOCKERFILE: Dockerfiles/java-coffeehouse.Dockerfile
+
+build-js-api-gateway:
+  <<: *build-image-definition
+  variables:
+    APP: "$APP_JS"
+    DOCKERFILE: Dockerfiles/js-coffeehouse.Dockerfile
+    DOCKER_BUILD_ARG: "--build-arg=SOURCE_DIR=js-coffeehouse/api-gateway"
+    TAG_SUFFIX: "-api-gateway"
+
+build-js-auth:
+  <<: *build-image-definition
+  variables:
+    APP: "$APP_JS"
+    DOCKERFILE: Dockerfiles/js-coffeehouse.Dockerfile
+    DOCKER_BUILD_ARG: "--build-arg=SOURCE_DIR=js-coffeehouse/auth"
+    TAG_SUFFIX: "-auth"
+
+build-js-user:
+  <<: *build-image-definition
+  variables:
+    APP: "$APP_JS"
+    DOCKERFILE: Dockerfiles/js-coffeehouse.Dockerfile
+    DOCKER_BUILD_ARG: "--build-arg=SOURCE_DIR=js-coffeehouse/user"
+    TAG_SUFFIX: "-user"
+
+build-php-backend:
+  <<: *build-image-definition
+  variables:
+    APP: "$APP_PHP"
+    DOCKERFILE: Dockerfiles/php-coffeehouse.Dockerfile
+    DOCKER_BUILD_ARG: "--build-arg=WEB_APP_PATH=php-coffeehouse/backend"
+    TAG_SUFFIX: "-backend"
+
+build-php-frontend:
+  <<: *build-image-definition
+  variables:
+    APP: "$APP_PHP"
+    DOCKERFILE: Dockerfiles/php-coffeehouse.Dockerfile
+    DOCKER_BUILD_ARG: "--build-arg=WEB_APP_PATH=php-coffeehouse/frontend"
+    TAG_SUFFIX: "-frontend"
+
+build-request-generation:
+  <<: *build-image-definition
+  variables:
+    APP: "$APP_REQUEST_GENERATION"
+    DOCKERFILE: Dockerfiles/requests-generation.Dockerfile
+
+build-request-testrand:
+  <<: *build-image-definition
+  variables:
+    APP: "$APP_TESTRAND"
+    DOCKERFILE: Dockerfiles/testrand.Dockerfile
+
+.release-to-staging-template: &release-to-staging-definition
+  only: [ "staging" ]
+  stage: release-to-staging
+  image: $CI_IMAGE
+  tags: [ "runner:docker", "size:large" ]
+  script:
+    - docker pull $BUILD_STABLE_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX}
+    - docker tag $BUILD_STABLE_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX} $AWS_STAGING_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX}
+    - docker push $AWS_STAGING_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX}
+    - >-
+        aws ssm get-parameter --region us-east-1
+        --name ci.dd-go.staging_google_shared_image_push_service_account.json
+        --with-decryption --query Parameter.Value
+        --out text | docker login -u _json_key --password-stdin https://eu.gcr.io
+    - docker tag $BUILD_STABLE_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX} $GCP_STAGING_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX}
+    - docker push $GCP_STAGING_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX}
+
+release-go-to-staging:
+  <<: *release-to-staging-definition
+  variables:
+    APP: "$APP_GO"
+
+release-java-to-staging:
+  <<: *release-to-staging-definition
+  variables:
+    APP: "$APP_JAVA"
+
+release-js-api-gateway-to-staging:
+  <<: *release-to-staging-definition
+  variables:
+    APP: "$APP_JS"
+    TAG_SUFFIX: "-api-gateway"
+
+release-js-auth-to-staging:
+  <<: *release-to-staging-definition
+  variables:
+    APP: "$APP_JS"
+    TAG_SUFFIX: "-auth"
+
+release-js-user-to-staging:
+  <<: *release-to-staging-definition
+  variables:
+    APP: "$APP_JS"
+    TAG_SUFFIX: "-user"
+
+release-php-backend-to-staging:
+  <<: *release-to-staging-definition
+  variables:
+    APP: "$APP_PHP"
+    TAG_SUFFIX: "-backend"
+
+release-php-frontend-to-staging:
+  <<: *release-to-staging-definition
+  variables:
+    APP: "$APP_PHP"
+    TAG_SUFFIX: "-frontend"
+
+release-request-generation-to-staging:
+  <<: *release-to-staging-definition
+  variables:
+    APP: "$APP_REQUEST_GENERATION"
+
+release-testrand-to-staging:
+  <<: *release-to-staging-definition
+  variables:
+    APP: "$APP_TESTRAND"
+
+.release-to-prod-template: &release-to-prod-definition
+  only: [ "master" ]
+  stage: release-to-prod
+  image: $CI_IMAGE
+  tags: [ "runner:docker", "size:large" ]
+  script:
+    - docker pull $BUILD_STABLE_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX}
+    - docker tag $BUILD_STABLE_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX} $AWS_PROD_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX}
+    - docker push $AWS_PROD_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX}
+    - >-
+        aws ssm get-parameter --region us-east-1
+        --name ci.dd-go.prod_google_shared_image_push_service_account.json
+        --with-decryption --query Parameter.Value
+        --out text | docker login -u _json_key --password-stdin https://eu.gcr.io
+    - docker tag $BUILD_STABLE_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX} $GCP_PROD_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX}
+    - docker push $GCP_PROD_REGISTRY/${APP}:${VERSION_PREFIX}${CI_COMMIT_SHA:0:8}${TAG_SUFFIX}
+
+release-go-to-prod:
+  <<: *release-to-prod-definition
+  variables:
+    APP: "$APP_GO"
+
+release-java-to-prod:
+  <<: *release-to-prod-definition
+  variables:
+    APP: "$APP_JAVA"
+
+release-js-api-gateway-to-prod:
+  <<: *release-to-prod-definition
+  variables:
+    APP: "$APP_JS"
+    TAG_SUFFIX: "-api-gateway"
+
+release-php-backend-to-prod:
+  <<: *release-to-prod-definition
+  variables:
+    APP: "$APP_PHP"
+    TAG_SUFFIX: "-backend"
+
+release-php-frontend-to-prod:
+  <<: *release-to-prod-definition
+  variables:
+    APP: "$APP_PHP"
+    TAG_SUFFIX: "-frontend"
+
+release-js-auth-to-prod:
+  <<: *release-to-prod-definition
+  variables:
+    APP: "$APP_JS"
+    TAG_SUFFIX: "-auth"
+
+release-js-user-to-prod:
+  <<: *release-to-prod-definition
+  variables:
+    APP: "$APP_JS"
+    TAG_SUFFIX: "-user"
+
+release-request-generation-to-prod:
+  <<: *release-to-prod-definition
+  variables:
+    APP: "$APP_REQUEST_GENERATION"
+
+release-testrand-to-prod:
+  <<: *release-to-prod-definition
+  variables:
+    APP: "$APP_TESTRAND"
+
+validate:build:
+  image: "$KUBERNETES_VALIDATE_IMAGE"
+  tags:
+  - runner:main
+  - size:large
+  stage: validate-helm
+  when: always
+  script:
+  - helm-charts-ensure-version-bumped.sh
+  - helm-charts-package.sh
+  - helm-charts-validate.sh
+
+validate:lint:
+  image: "$KUBERNETES_VALIDATE_IMAGE"
+  tags:
+  - runner:main
+  - size:large
+  stage: validate-helm
+  when: always
+  script:
+  - helm-charts-lint.sh || true
+  - helm-charts-diff.sh
+  after_script:
+  - helm-charts-comment-pr.sh | ts "[%H:%M:%S %Z] "
+  allow_failure: true
+
+.upload-aws: &upload-aws
+  image: "$KUBERNETES_VALIDATE_IMAGE"
+  tags:
+  - runner:main
+  - size:large
+  stage: upload-helm
+  retry: 2
+  script:
+  - helm-charts-package.sh | ts "[%H:%M:%S %Z] "
+  - helm-charts-upload.sh $BUCKET | ts "[%H:%M:%S %Z] "
+  - run-locked.py --redis-server runner.d7edgt.ng.0001.use1.cache.amazonaws.com --timeout 30 helm-reindex.sh $BUCKET | ts "[%H:%M:%S %Z] "
+
+.upload-gcp: &upload-gcp
+  image: "$KUBERNETES_VALIDATE_IMAGE"
+  tags:
+  - runner:main
+  - size:large
+  stage: upload-helm
+  retry: 2
+  script:
+  - helm-gauth.sh ci.k8s-resources.gcp-sa.ci-helm-push
+  - helm-charts-package.sh | ts "[%H:%M:%S %Z] "
+  - helm-charts-upload.sh $BUCKET | ts "[%H:%M:%S %Z] "
+  - run-locked.py --redis-server runner.d7edgt.ng.0001.use1.cache.amazonaws.com --timeout 30 helm-reindex.sh $BUCKET | ts "[%H:%M:%S %Z] "
+
+aws-us-east-1-staging:deploy:
+  <<: *upload-aws
+  only: [ "staging" ]
+  variables:
+    BUCKET: s3://datadog-helm-staging
+
+aws-us-east-1-production:deploy:
+  <<: *upload-aws
+  only: [ "master" ]
+  variables:
+    BUCKET: s3://datadog-helm-prod
+
+gcp-staging:deploy:
+  <<: *upload-gcp
+  only: [ "staging" ]
+  variables:
+    BUCKET: gs://datadog-helm-staging
+
+gcp-production:deploy:
+  <<: *upload-gcp
+  only: [ "master" ]
+  variables:
+    BUCKET: gs://datadog-helm-prod

@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-coffeehouse
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app: java-coffeehouse
+    chart_name: {{ .Chart.Name }}
+    chart_version: {{ .Chart.Version }}
+    service: {{ .Chart.Name }}
+    team: {{ .Values.team }}
+spec:
+  replicas: {{ $.Values.replicas.javaCoffeehouse }}
+  revisionHistoryLimit: 2
+  minReadySeconds: 5
+  selector:
+    matchLabels:
+      app: java-coffeehouse
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      name: java-coffeehouse
+      labels:
+        app: java-coffeehouse
+        chart_name: {{ .Chart.Name }}
+        service: {{ .Chart.Name }}
+        team: {{ .Values.team }}
+      annotations:
+        ad.datadoghq.com/java-coffeehouse.logs: |
+          [
+            {
+              "source": "java",
+              "service": "{{ .Chart.Name }}-coffeehouse"
+            }
+          ]
+    spec:
+      containers:
+      - name: java-coffeehouse
+        image: "{{ $.Values.global.docker.registry }}/{{ $.Values.images.javaCoffeehouse.name }}:{{ $.Values.image.tag }}"
+        ports:
+        - containerPort: 8080
+        resources:
+{{ toYaml $.Values.deployment.resources.javaCoffeehouse | indent 10 }}
+        volumeMounts:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumeMounts | indent 8 }}
+        env:
+        - name: DD_AGENT_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: DD_TRACE_AGENT_PORT
+          value: "{{ $.Values.trace_port }}"
+        - name: DD_SERVICE_NAME
+          value: "coffee-house"
+        - name: DD_PRIORITY_SAMPLING
+          value: "true"
+        - name: USE_NODE_SERVICE
+          value: "false"
+        - name: NODE_API_GATEWAY_URL
+          value: "http://js-api-gateway:8080"
+        - name: MONGO_HOST
+          value: "mongo"
+        - name: PHP_API_GATEWAY_URL
+          value: "http://php-coffeehouse-frontend"
+        - name: BEANSERVER_URL
+          value: "http://java-beanserver:8080"
+{{ toYaml $.Values.dogstatsd_custom_socket.env | indent 8 }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          timeoutSeconds: 2
+          periodSeconds: 20
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 80
+          timeoutSeconds: 2
+          periodSeconds: 10
+      volumes:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumes | indent 8 }}

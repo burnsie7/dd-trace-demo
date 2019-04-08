@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Chart.Name }}
+    chart_name: {{ .Chart.Name }}
+    chart_version: {{ .Chart.Version }}
+    service: {{ .Chart.Name }}
+    team: {{ .Values.team }}
+spec:
+  ports:
+  - name: mysql
+    port: 3306
+  selector:
+    app: mysql
+  clusterIP: None

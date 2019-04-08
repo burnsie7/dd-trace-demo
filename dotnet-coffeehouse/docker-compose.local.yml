@@ -1,0 +1,36 @@
+version: "3.2"
+# To use locally, from the root:
+# DEMO_DD_API_KEY=_PUT_API_KEY_HERE_ docker-compose -f docker-compose.yml -f dotnet-coffeehouse/docker-compose.local.yml up
+services:
+  redis:
+    ports:
+      - "6379:6379"
+  sqlserver:
+    ports:
+      - "1433:1433"
+  mysql:
+    ports:
+      - "3306:3306"
+  agent:
+    ports:
+      - "8126:8126"
+  external_agent:
+    entrypoint: ["echo", "Does not run here"]
+  java-coffeehouse:
+    entrypoint: ["echo", "Does not run here"]
+  java-coffeehouse-exthost:
+    entrypoint: ["echo", "Does not run here"]
+  go-coffeehouse:
+    entrypoint: ["echo", "Does not run here"]
+  js-coffeehouse-api-gateway:  # Consider renaming / prefixing this image specific to the node part
+    entrypoint: ["echo", "Does not run here"]
+  js-coffeehouse-auth:
+    entrypoint: ["echo", "Does not run here"]
+  js-coffeehouse-user:
+    entrypoint: ["echo", "Does not run here"]
+  request-generator:
+    entrypoint: ["echo", "Does not run here"]
+  request-generator-testrand:
+    entrypoint: ["echo", "Does not run here"]
+volumes:
+  agent_data:

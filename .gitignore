@@ -1,0 +1,9 @@
+*.jar
+!src/github.com/DataDog/java-coffeehouse/gradle/wrapper/gradle-wrapper.jar
+
+.idea
+/java-coffeehouse/.gradle
+/java-coffeehouse/build
+
+.vs
+.vscode

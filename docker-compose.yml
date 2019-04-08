@@ -1,0 +1,223 @@
+version: "3.2"
+services:
+  memcached:
+    image: memcached:1.5-alpine
+  mongo:
+    image: mongo:3.2
+  mysql:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: coffeehouse
+      MYSQL_PASSWORD: coffeehouse
+      MYSQL_USER: coffeehouse
+      MYSQL_DATABASE: coffeehouse
+    volumes:
+      - ./Dockerfiles/mysql:/docker-entrypoint-initdb.d
+  redis:
+    image: redis:5.0
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server
+    environment:
+      - ACCEPT_EULA="Y"
+      - SA_PASSWORD=Base-Dem0_Password%WhichNeeds~OtherStuff==${DEMO_DD_API_KEY}
+    healthcheck:
+      test: [ "CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "Base-Dem0_Password%WhichNeeds~OtherStuff==${DEMO_DD_API_KEY}", "-Q", "IF DB_ID('dddemo') IS NULL BEGIN; CREATE DATABASE dddemo; END; SELECT @@SERVERNAME;" ]
+      interval: 11s
+      retries: 5
+      timeout: 15s
+  mysql-dotnet:
+    image: mysql
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=Base-Dem0_Password%WhichNeeds~OtherStuff==${DEMO_DD_API_KEY}
+      - MYSQL_DATABASE=dddemo
+  agent:
+    image: datadog/agent:6.8.2
+    environment:
+      - DD_API_KEY=${DEMO_DD_API_KEY}
+      - DD_TAGS="env:${DEMO_DD_ENV}"
+      - DD_AC_EXCLUDE="name:datadog-agent"
+      - DD_APM_ENABLED=true
+      - "DD_APM_ANALYZED_SPANS=coffee-house|servlet.request=1,api-gateway|express.request=1,auth|express.request=1,user|express.request=1"
+      - DD_LOGS_ENABLED=true
+      - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true
+      - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=1
+      # Uncomment the following if you need to target Staging instead
+      #- DD_DD_URL=https://app.datad0g.com
+      #- DD_APM_DD_URL=https://trace.agent.datad0g.com
+      #- DD_LOGS_CONFIG_LOGS_DD_URL=agent-intake.logs.datad0g.com:10516
+    volumes:
+      - type: bind
+        source: "/var/run/docker.sock"
+        target: "/var/run/docker.sock"
+        read_only: true
+      - type: bind
+        source: "/proc/"
+        target: "/host/proc/"
+        read_only: true
+      - type: bind
+        source: "/sys/fs/cgroup/"
+        target: "/host/sys/fs/cgroup/"
+        read_only: true
+      - type: volume
+        source: agent_data
+        target: "/opt/datadog-agent/run"
+  dotnet-coffeehouse:
+    build:
+      context: .
+      dockerfile: Dockerfiles/dotnet-coffeehouse.Dockerfile
+    ports:
+      - "127.0.0.1:8084:8084"
+    environment:
+      - DD_AGENT_HOST=agent
+      - DD_SERVICE_NAME=dotnet-coffeehouse
+      - CORECLR_ENABLE_PROFILING=1
+      - CORECLR_PROFILER={846F5F1C-F9AE-4B07-969E-05C26BC060D8}
+      - CORECLR_PROFILER_PATH=/opt/datadog/Datadog.Trace.ClrProfiler.Native.so
+      - DD_INTEGRATIONS=/opt/datadog/integrations.json
+      - ASPNETCORE_ENVIRONMENT=Production
+      - DEMO_DD_API_KEY=${DEMO_DD_API_KEY}
+      - MSSQL_HOST=sqlserver
+      - MYSQL_HOST=mysql-dotnet
+      - REDIS_HOST=redis
+      # NOTE: Can also set env vars for each of the dbs for: <DBTYPE>_DB_NAME, <DBTYPE>_USER_NAME, <DBTYPE>_PASSWORD
+      #   Ex: To set user name for mysql connection, add env variable named MYSQL_USER_NAME=<user>
+    depends_on:
+      - agent
+      - mysql-dotnet
+      - sqlserver
+      - redis
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "dotnet", "service": "coffee-house"}]'
+  java-coffeehouse:
+    build:
+      context: .
+      dockerfile: Dockerfiles/java-coffeehouse.Dockerfile
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8013:9013"
+    environment:
+      - DD_AGENT_HOST=agent
+      - DD_SERVICE_NAME=coffee-house
+      - DD_PRIORITY_SAMPLING=true
+      - USE_NODE_SERVICE=false
+      - MONGO_HOST=mongo
+    depends_on:
+      - agent
+      - mongo
+      - java-coffeehouse-beanserver
+      - php-coffeehouse-frontend
+      - dotnet-coffeehouse
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "java", "service": "coffee-house"}]'
+  java-coffeehouse-beanserver:
+    build:
+      context: .
+      dockerfile: Dockerfiles/java-coffeehouse.Dockerfile
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      - DD_AGENT_HOST=agent
+      - DD_SERVICE_NAME=bean-server
+      - MONGO_HOST=mongo
+    depends_on:
+      - agent
+      - mongo
+    extra_hosts:
+      - "java-beanserver:127.0.0.1"
+  go-coffeehouse:
+    build:
+      context: .
+      dockerfile: Dockerfiles/go-coffeehouse.Dockerfile
+    environment:
+      PORT: 8082
+      DD_AGENT_HOST: "agent"
+    ports:
+      - "127.0.0.1:8082:8082"
+    depends_on:
+      - agent
+      - mongo
+  js-coffeehouse-api-gateway:  # Consider renaming / prefixing this image specific to the node part
+    build:
+      context: .
+      dockerfile: Dockerfiles/js-coffeehouse.Dockerfile
+      args:
+        SOURCE_DIR: js-coffeehouse/api-gateway
+    environment:
+      - AUTH_SERVER_URL=http://js-coffeehouse-auth:8080
+      - USER_SERVER_URL=http://js-coffeehouse-user:8080
+      - DD_AGENT_HOST=agent
+    volumes:
+      - ./js-coffeehouse/api-gateway/src:/usr/src/app/src
+  js-coffeehouse-auth:
+    build:
+      context: .
+      dockerfile: Dockerfiles/js-coffeehouse.Dockerfile
+      args:
+        SOURCE_DIR: js-coffeehouse/auth
+    environment:
+      - DD_AGENT_HOST=agent
+      - REDIS_HOST=redis
+    volumes:
+      - ./js-coffeehouse/auth/src:/usr/src/app/src
+  js-coffeehouse-user:
+    build:
+      context: .
+      dockerfile: Dockerfiles/js-coffeehouse.Dockerfile
+      args:
+        SOURCE_DIR: js-coffeehouse/user
+    environment:
+      - DD_AGENT_HOST=agent
+      - MONGO_HOST=mongo
+    volumes:
+      - ./js-coffeehouse/user/src:/usr/src/app/src
+  php-coffeehouse-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfiles/php-coffeehouse.Dockerfile
+      args:
+        - WEB_APP_PATH=php-coffeehouse/frontend
+    environment:
+      APACHE_RUN_DIR: /var/run/apache2
+      APACHE_RUN_USER: www-data
+      APACHE_RUN_GROUP: www-data
+      APACHE_LOG_DIR: /var/log/apache2
+      DD_AGENT_HOST: agent
+      ddtrace_app_name: php.frontend.site
+    ports:
+      - 9123:80
+    depends_on:
+      - agent
+      - memcached
+      - mysql
+      - php-coffeehouse-backend
+  php-coffeehouse-backend:
+    build:
+      context: .
+      dockerfile: Dockerfiles/php-coffeehouse.Dockerfile
+      args:
+        - WEB_APP_PATH=php-coffeehouse/backend
+    environment:
+      APACHE_RUN_DIR: /var/run/apache2
+      APACHE_RUN_USER: www-data
+      APACHE_RUN_GROUP: www-data
+      APACHE_LOG_DIR: /var/log/apache2
+      DD_AGENT_HOST: agent
+      ddtrace_app_name: php.backend.api
+    ports:
+      - 9124:80
+    depends_on:
+      - agent
+      - memcached
+      - mysql
+  request-generator-testrand:
+    build:
+      context: .
+      dockerfile: Dockerfiles/testrand.Dockerfile
+    environment:
+      - JAVA_COFFEEHOUSE_ENDPOINT=http://java-coffeehouse:8080
+    volumes:
+      - ./request-generation:/usr/cron/request-generation
+volumes:
+  agent_data:

@@ -1,0 +1,29 @@
+---
+- name: "Deploy To us1.staging.dog"
+  spinnakerappname: ddtracedemo
+  appname: dd-trace-demo
+  templatename: Deploy-To-Kubernetes
+  templateversion: V6
+  namespace: apm-dd-trace-demo
+  env: staging
+  cluster: chinook-us1
+  parameters:
+  - name: chartVersion
+    default: "X.Y.Z"
+    description: "The version of the chart this deployment will use"
+    label: "Chart Version"
+    required: true
+  - name: imageTag
+    default: "v<PIPE-ID>-<SHA1>"
+    description: "The value that will passed to helm template"
+    label: "Image Tag"
+    required: true
+  - name: namespace
+    default: apm-dd-trace-demo
+    description: "The namespace to deploy your application into"
+    label: Namespace
+    required: true
+  - name: imageKey
+    description: "(Optional) The key name of the primary image tag"
+    label: "Image Tag Key"
+    required: false

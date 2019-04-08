@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: js-auth
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app: js-auth
+    chart_name: {{ .Chart.Name }}
+    chart_version: {{ .Chart.Version }}
+    service: {{ .Chart.Name }}
+    team: {{ .Values.team }}
+spec:
+  replicas: {{ $.Values.replicas.jsAuth }}
+  revisionHistoryLimit: 2
+  minReadySeconds: 5
+  selector:
+    matchLabels:
+      app: js-auth
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      name: js-auth
+      labels:
+        app: js-auth
+        chart_name: {{ .Chart.Name }}
+        service: {{ .Chart.Name }}
+        team: {{ .Values.team }}
+      annotations:
+        ad.datadoghq.com/js-auth.logs: |
+          [
+            {
+              "source": "nodejs",
+              "service": "{{ .Chart.Name }}-js-auth"
+            }
+          ]
+    spec:
+      containers:
+      - name: js-auth
+        image: "{{ $.Values.global.docker.registry }}/{{ $.Values.images.jsAuth.name }}:{{ $.Values.image.tag }}-auth"
+        resources:
+{{ toYaml $.Values.deployment.resources.jsAuth | indent 10 }}
+        volumeMounts:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumeMounts | indent 8 }}
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DD_AGENT_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: DD_TRACE_AGENT_PORT
+          value: "{{ $.Values.trace_port }}"
+        - name: REDIS_HOST
+          value: "redis"
+{{ toYaml $.Values.dogstatsd_custom_socket.env | indent 8 }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          timeoutSeconds: 2
+          periodSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          timeoutSeconds: 2
+          periodSeconds: 10
+      volumes:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumes | indent 8 }}

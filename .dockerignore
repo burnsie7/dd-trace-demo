@@ -1,0 +1,5 @@
+.*.sw*
+.git
+dotnet-coffeehouse/**/bin/
+dotnet-coffeehouse/**/obj/
+dotnet-coffeehouse/**/.vs

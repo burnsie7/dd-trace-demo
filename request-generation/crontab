@@ -1,0 +1,8 @@
+* * * * * root  THREADS=1 CONNECTIONS=1 /usr/cron/request-generation/generate-requests.sh $WRK $DURATION $GO_COFFEEHOUSE_ENDPOINT/ >> /var/log/cron.log 2>&1
+* * * * * root  THREADS=1 CONNECTIONS=1 /usr/cron/request-generation/generate-requests.sh $WRK $DURATION $GO_COFFEEHOUSE_ENDPOINT/orders/ >> /var/log/cron.log 2>&1
+* * * * * root  THREADS=1 CONNECTIONS=1 /usr/cron/request-generation/generate-post-requests.sh $WRK $DURATION $GO_COFFEEHOUSE_ENDPOINT/orders/ >> /var/log/cron.log 2>&1
+* * * * * root  THREADS=1 CONNECTIONS=1 /usr/cron/request-generation/generate-requests.sh $WRK 3 $DOTNET_COFFEEHOUSE_ENDPOINT/demodata >> /var/log/cron.log 2>&1
+* * * * * root  THREADS=1 CONNECTIONS=1 /usr/cron/request-generation/generate-requests.sh $WRK $DURATION $DOTNET_COFFEEHOUSE_ENDPOINT/users >> /var/log/cron.log 2>&1
+* * * * * root  THREADS=1 CONNECTIONS=1 /usr/cron/request-generation/generate-requests.sh $WRK $DURATION $DOTNET_COFFEEHOUSE_ENDPOINT/orders >> /var/log/cron.log 2>&1
+* * * * * root  THREADS=1 CONNECTIONS=1 /usr/cron/request-generation/generate-requests.sh $WRK $DURATION $DOTNET_COFFEEHOUSE_ENDPOINT/products >> /var/log/cron.log 2>&1
+* * * * * root  THREADS=1 CONNECTIONS=1 /usr/cron/request-generation/generate-requests.sh $WRK $DURATION $PHP_COFFEEHOUSE_ENDPOINT/coffees >> /var/log/cron.log 2>&1

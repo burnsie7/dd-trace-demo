@@ -1,0 +1,6 @@
+/Dockerfiles/                   @DataDog/apm-infra
+/docker-compose.yml             @DataDog/apm-infra
+
+/go-coffeehouse                 @DataDog/apm
+/java-coffeehouse               @DataDog/apm
+/js-coffeehouse                 @DataDog/apm

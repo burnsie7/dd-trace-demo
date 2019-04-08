@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app: redis
+    chart_name: {{ .Chart.Name }}
+    chart_version: {{ .Chart.Version }}
+    service: {{ .Chart.Name }}
+    team: {{ .Values.team }}
+spec:
+  replicas: {{ $.Values.replicas.redis }}
+  revisionHistoryLimit: 2
+  minReadySeconds: 5
+  selector:
+    matchLabels:
+      app: redis
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      name: redis
+      labels:
+        app: redis
+        chart_name: {{ .Chart.Name }}
+        service: {{ .Chart.Name }}
+        team: {{ .Values.team }}
+      annotations:
+        ad.datadoghq.com/redis.logs: |
+          [
+            {
+              "service": {{ $.Chart.Name | quote }},
+              "source": "redis"
+            }
+          ]
+    spec:
+      # no-TolerationLinter
+      containers:
+      - name: redis
+        image: "{{ $.Values.images.redis.name }}:{{ $.Values.images.redis.tag }}"
+        resources:
+{{ toYaml $.Values.deployment.resources.redis | indent 10 }}
+        volumeMounts:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumeMounts | indent 8 }}
+        env:
+{{ toYaml $.Values.dogstatsd_custom_socket.env | indent 8 }}
+        ports:
+        - containerPort: 6379
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "redis-cli ping"
+          initialDelaySeconds: 10
+          timeoutSeconds: 2
+          periodSeconds: 3
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "redis-cli ping"
+          initialDelaySeconds: 60
+          timeoutSeconds: 2
+          periodSeconds: 10
+      volumes:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumes | indent 8 }}

@@ -1,0 +1,169 @@
+team: apm
+
+replicas:
+  goCoffeehouse: 1
+  javaCoffeehouse: 1
+  javaBeanserver: 1
+  jsApiGateway: 1
+  jsAuth: 1
+  jsUser: 1
+  memcached: 1
+  mongo: 1
+  mysql: 1
+  phpCoffeehousebackend: 1
+  phpCoffeehouseFrontend: 1
+  redis: 1
+  testrand: 1
+
+image:
+  tag:
+    xxx  # Give a real value here when deploying.
+
+images:
+  goCoffeehouse:
+    name: dd-trace-demo-go
+  javaCoffeehouse:
+    name: dd-trace-demo-java
+  javaBeanserver:
+    name: dd-trace-demo-java
+  jsApiGateway:
+    name: dd-trace-demo-js
+  jsAuth:
+    name: dd-trace-demo-js
+  jsUser:
+    name: dd-trace-demo-js
+  phpCoffeehouseBackend:
+    name: dd-trace-demo-php
+  phpCoffeehouseFrontend:
+    name: dd-trace-demo-php
+  memcached:
+    name: memcached
+    tag: 1.5-alpine
+  mongo:
+    name: mongo
+    tag: 3.2
+  mysql:
+    name: mysql
+    tag: 5.7
+  redis:
+    name: redis
+    tag: 5.0
+  testrand:
+    name: dd-trace-demo-testrand
+
+deployment:
+  resources:
+    goCoffeehouse:
+      requests:
+        memory: "120Mi"
+        cpu: "100m"
+      limits:
+        memory: "200Mi"
+        cpu: "200m"
+    javaCoffeehouse:
+      requests:
+        memory: "1.4Gi"
+        cpu: "250m"
+      limits:
+        memory: "2Gi"
+        cpu: "500m"
+    javaBeanserver:
+      requests:
+        memory: "1.4Gi"
+        cpu: "100m"
+      limits:
+        memory: "2Gi"
+        cpu: "200m"
+    jsApiGateway:
+      requests:
+        memory: "120Mi"
+        cpu: "100m"
+      limits:
+        memory: "200Mi"
+        cpu: "200m"
+    jsAuth:
+      requests:
+        memory: "120Mi"
+        cpu: "100m"
+      limits:
+        memory: "200Mi"
+        cpu: "200m"
+    jsUser:
+      requests:
+        memory: "120Mi"
+        cpu: "100m"
+      limits:
+        memory: "200Mi"
+        cpu: "200m"
+    phpCoffeehouseBackend:
+      requests:
+        memory: "150Mi"
+        cpu: "200m"
+      limits:
+        memory: "200Mi"
+        cpu: "200m"
+    phpCoffeehouseFrontend:
+      requests:
+        memory: "150Mi"
+        cpu: "400m"
+      limits:
+        memory: "200Mi"
+        cpu: "400m"
+    memcached:
+      requests:
+        memory: "128Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "100m"
+    mongo:
+      requests:
+        memory: "128Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "100m"
+    mysql:
+      requests:
+        memory: "300Mi"
+        cpu: "50m"
+      limits:
+        memory: "500Mi"
+        cpu: "100m"
+    redis:
+      requests:
+        memory: "128Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "100m"
+    testrand:
+      requests:
+        memory: "50Mi"
+        cpu: "200m"
+      limits:
+        memory: "100Mi"
+        cpu: "200m"
+
+# We're injecting the dogstatsd custom socket ourselves.
+# This is normally injected by the admission controller,
+# but since we're using a different one because we're reporting
+# to a demo instance of the agent, running on the same
+# machine as the "standard" agent, we need to inject the path of this
+# particular agent.
+dogstatsd_custom_socket:
+  volumes:
+  - name: datadog-dd-trace-demo-dogstatsd-custom-socket
+    hostPath:
+      path: /var/run/datadog-agent-dd-trace-demo
+      type: DirectoryOrCreate
+
+  volumeMounts:
+    - name: datadog-dd-trace-demo-dogstatsd-custom-socket
+      mountPath: /var/run/datadog-agent-dd-trace-demo
+
+  env:
+    - name: STATSD_URL
+      value: /var/run/datadog-agent-dd-trace-demo/statsd.sock
+
+trace_port: 8128

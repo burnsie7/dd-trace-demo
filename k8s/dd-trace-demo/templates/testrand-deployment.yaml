@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testrand
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app: testrand
+    chart_name: {{ .Chart.Name }}
+    chart_version: {{ .Chart.Version }}
+    service: {{ .Chart.Name }}
+    team: {{ .Values.team }}
+spec:
+  replicas: {{ $.Values.replicas.testrand }}
+  revisionHistoryLimit: 2
+  minReadySeconds: 5
+  selector:
+    matchLabels:
+      app: testrand
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  template:
+    metadata:
+      name: testrand
+      labels:
+        app: testrand
+        chart_name: {{ .Chart.Name }}
+        service: {{ .Chart.Name }}
+        team: {{ .Values.team }}
+      annotations:
+        ad.datadoghq.com/testrand.logs: |
+          [
+            {
+              "source": "shell",
+              "service": "{{ $.Chart.Name | quote }}"
+            }
+          ]
+    spec:
+      containers:
+      # no-LivenessProbeLinter
+      - name: testrand
+        image: "{{ $.Values.global.docker.registry }}/{{ $.Values.images.testrand.name }}:{{ $.Values.image.tag }}"
+        resources:
+{{ toYaml $.Values.deployment.resources.testrand | indent 10 }}
+        volumeMounts:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumeMounts | indent 8 }}
+        env:
+        - name: JAVA_COFFEEHOUSE_ENDPOINT
+          value: "http://java-coffeehouse:8080"
+{{ toYaml $.Values.dogstatsd_custom_socket.env | indent 8 }}
+      volumes:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumes | indent 8 }}

@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: php-coffeehouse-frontend
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app: php-coffeehouse-frontend
+    chart_name: {{ .Chart.Name }}
+    chart_version: {{ .Chart.Version }}
+    service: {{ .Chart.Name }}
+    team: {{ .Values.team }}
+spec:
+  replicas: {{ $.Values.replicas.phpCoffeehouseFrontend }}
+  revisionHistoryLimit: 2
+  minReadySeconds: 5
+  selector:
+    matchLabels:
+      app: php-coffeehouse-frontend
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      name: php-coffeehouse-frontend
+      labels:
+        app: php-coffeehouse-frontend
+        chart_name: {{ .Chart.Name }}
+        service: {{ .Chart.Name }}
+        team: {{ .Values.team }}
+      annotations:
+        ad.datadoghq.com/php-coffeehouse-frontend.logs: |
+          [
+            {
+              "source": "nodejs",
+              "service": "{{ .Chart.Name }}-php-coffeehouse-frontend"
+            }
+          ]
+    spec:
+      containers:
+      - name: php-coffeehouse-frontend
+        image: "{{ $.Values.global.docker.registry }}/{{ $.Values.images.phpCoffeehouseFrontend.name }}:{{ $.Values.image.tag }}-frontend"
+        ports:
+        - containerPort: 80
+        resources:
+{{ toYaml $.Values.deployment.resources.phpCoffeehouseFrontend | indent 10 }}
+        volumeMounts:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumeMounts | indent 8 }}
+        env:
+        - name: DD_AGENT_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: DD_TRACE_AGENT_PORT
+          value: "{{ $.Values.trace_port }}"
+        - name: APACHE_RUN_DIR
+          value: /var/run/apache2
+        - name: APACHE_RUN_USER
+          value: www-data
+        - name: APACHE_RUN_GROUP
+          value: www-data
+        - name: APACHE_LOG_DIR
+          value: /var/log/apache2
+        - name: ddtrace_app_name
+          value: php.frontend.site
+{{ toYaml $.Values.dogstatsd_custom_socket.env | indent 8 }}
+        readinessProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 5
+          timeoutSeconds: 2
+          periodSeconds: 3
+        livenessProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 30
+          timeoutSeconds: 2
+          periodSeconds: 10
+      volumes:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumes | indent 8 }}

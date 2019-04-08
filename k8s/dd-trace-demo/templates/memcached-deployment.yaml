@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memcached
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app: memcached
+    chart_name: {{ .Chart.Name }}
+    chart_version: {{ .Chart.Version }}
+    service: {{ .Chart.Name }}
+    team: {{ .Values.team }}
+spec:
+  replicas: {{ $.Values.replicas.memcached }}
+  revisionHistoryLimit: 2
+  minReadySeconds: 5
+  selector:
+    matchLabels:
+      app: memcached
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      name: memcached
+      labels:
+        app: memcached
+        chart_name: {{ .Chart.Name }}
+        service: {{ .Chart.Name }}
+        team: {{ .Values.team }}
+      annotations:
+        ad.datadoghq.com/memcached.logs: |
+          [
+            {
+              "service": {{ $.Chart.Name | quote }},
+              "source": "memcached"
+            }
+          ]
+    spec:
+      # no-TolerationLinter
+      containers:
+      - name: memcached
+        image: "{{ $.Values.images.memcached.name }}:{{ $.Values.images.memcached.tag }}"
+        resources:
+{{ toYaml $.Values.deployment.resources.memcached | indent 10 }}
+        volumeMounts:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumeMounts | indent 8 }}
+        env:
+{{ toYaml $.Values.dogstatsd_custom_socket.env | indent 8 }}
+        ports:
+        - containerPort: 11211
+          name: memcached
+        livenessProbe:
+          tcpSocket:
+            port: memcached
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          tcpSocket:
+            port: memcached
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+      volumes:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumes | indent 8 }}

@@ -1,0 +1,8 @@
+FROM 486234852809.dkr.ecr.us-east-1.amazonaws.com/docker:18.03.1
+
+RUN apt-get update \
+    && apt-get install -y python-pip \
+    && apt-get -y clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install awscli

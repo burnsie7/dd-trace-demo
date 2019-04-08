@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app: mysql
+    chart_name: {{ .Chart.Name }}
+    chart_version: {{ .Chart.Version }}
+    service: {{ .Chart.Name }}
+    team: {{ .Values.team }}
+spec:
+  replicas: {{ $.Values.replicas.mysql }}
+  revisionHistoryLimit: 2
+  minReadySeconds: 5
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      name: mysql
+      labels:
+        app: mysql
+        chart_name: {{ .Chart.Name }}
+        service: {{ .Chart.Name }}
+        team: {{ .Values.team }}
+      annotations:
+        ad.datadoghq.com/mysql.logs: |
+          [
+            {
+              "service": {{ $.Chart.Name | quote }},
+              "source": "mysql"
+            }
+          ]
+    spec:
+      # no-TolerationLinter
+      containers:
+      - name: mysql
+        image: "{{ $.Values.images.mysql.name }}:{{ $.Values.images.mysql.tag }}"
+        resources:
+{{ toYaml $.Values.deployment.resources.mysql | indent 10 }}
+        volumeMounts:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumeMounts | indent 8 }}
+        - name: mysql-init
+          mountPath: /docker-entrypoint-initdb.d
+        env:
+{{ toYaml $.Values.dogstatsd_custom_socket.env | indent 8 }}
+        - name: MYSQL_ROOT_PASSWORD
+          value: coffeehouse
+        - name: MYSQL_PASSWORD
+          value: coffeehouse
+        - name: MYSQL_USER
+          value: coffeehouse
+        - name: MYSQL_DATABASE
+          value: coffeehouse
+        ports:
+        - containerPort: 3306
+          name: mysql
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "mysqladmin ping -u root -pcoffeehouse"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "mysqladmin ping -u root -pcoffeehouse"
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
+          successThreshold: 1
+          failureThreshold: 3
+      volumes:
+{{ toYaml $.Values.dogstatsd_custom_socket.volumes | indent 6 }}
+      - name: mysql-init
+        configMap:
+          name: mysql-init
